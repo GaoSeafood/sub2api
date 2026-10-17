@@ -45,7 +45,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --force-create automation/upstream-sync "origin/$FORK_BRANCH"
           git merge --no-edit --no-ff "upstream/$UPSTREAM_BRANCH"
-          git push --force-with-lease origin automation/upstream-sync
+          git push --force origin automation/upstream-sync
 
       - name: Open or refresh the review PR
         if: steps.sync.outputs.count != '0'
