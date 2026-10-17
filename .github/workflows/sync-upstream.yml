@@ -1,0 +1,68 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      UPSTREAM_REPOSITORY: "Wei-Shaw/sub2api"
+      UPSTREAM_BRANCH: "main"
+      FORK_BRANCH: "main"
+    steps:
+      - name: Check out the fork
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: "main"
+          fetch-depth: 0
+
+      - name: Compare with upstream and prepare a review branch
+        id: sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream "https://github.com/$UPSTREAM_REPOSITORY.git"
+          git fetch --quiet origin --prune
+          git fetch --quiet upstream "$UPSTREAM_BRANCH" --no-tags
+          count="$(git rev-list --count "origin/$FORK_BRANCH..upstream/$UPSTREAM_BRANCH")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          [[ "$count" != 0 ]] || exit 0
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --force-create automation/upstream-sync "origin/$FORK_BRANCH"
+          git merge --no-edit --no-ff "upstream/$UPSTREAM_BRANCH"
+          git push --force origin automation/upstream-sync
+
+      - name: Open or refresh the review PR
+        if: steps.sync.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          This PR syncs `$UPSTREAM_REPOSITORY` into this fork.
+          Merge conflicts stop the workflow. Automatic merge waits for every check and pauses if workflows, deployment files, environment files, or schema migrations change.
+          EOF
+          pr_number="$(gh pr list --repo "$GH_REPO" --state open --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --json number --jq '.[0].number // empty')"
+          if [[ -n "$pr_number" ]]; then
+            gh pr edit "$pr_number" --repo "$GH_REPO" --title "chore: sync upstream" --body-file "$RUNNER_TEMP/pr-body.md"
+          else
+            gh pr create --repo "$GH_REPO" --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --title "chore: sync upstream" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
