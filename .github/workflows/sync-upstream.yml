@@ -44,7 +44,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --force-create automation/upstream-sync "origin/$FORK_BRANCH"
-          git merge --no-edit --no-ff "upstream/$UPSTREAM_BRANCH"
+          merge_log="$RUNNER_TEMP/upstream-merge.log"
+          if ! git merge --no-edit --no-ff --strategy-option=ours "upstream/$UPSTREAM_BRANCH" >"$merge_log" 2>&1; then
+            cat "$merge_log"
+            exit 1
+          fi
+          cat "$merge_log"
+          conflict_lines="$(grep '^CONFLICT' "$merge_log" || true)"
+          if [[ -n "$conflict_lines" ]] && grep -vqF '.github/' <<<"$conflict_lines"; then
+            echo "Upstream conflicts outside fork-specific GitHub configuration require manual resolution."
+            git reset --hard "origin/$FORK_BRANCH"
+            exit 1
+          fi
           # Preserve this fork's CI, deployment, and automation settings; only sync application source.
           git restore --source="origin/$FORK_BRANCH" --staged --worktree -- .github
           git commit --amend --no-edit
@@ -62,7 +73,7 @@ jobs:
           set -euo pipefail
           cat > "$RUNNER_TEMP/pr-body.md" <<EOF
           This PR syncs $UPSTREAM_REPOSITORY into this fork.
-          Fork-specific GitHub automation and deployment files are preserved; upstream application changes are reviewed here. Merge conflicts stop the workflow. Automatic merge waits for every check and pauses for deployment, environment, or schema migration changes.
+          Fork-specific GitHub automation and deployment files are preserved; conflicts outside that configuration stop the workflow for manual resolution. Upstream application changes are reviewed here. Automatic merge waits for every check and pauses for deployment, environment, or schema migration changes.
           EOF
           pr_number="$(gh pr list --repo "$GH_REPO" --state open --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --json number --jq '.[0].number // empty')"
           if [[ -n "$pr_number" ]]; then
