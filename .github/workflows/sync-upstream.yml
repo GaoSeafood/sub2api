@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/pr-body.md" <<EOF
-          This PR syncs `$UPSTREAM_REPOSITORY` into this fork.
+          This PR syncs $UPSTREAM_REPOSITORY into this fork.
           Merge conflicts stop the workflow. Automatic merge waits for every check and pauses if workflows, deployment files, environment files, or schema migrations change.
           EOF
           pr_number="$(gh pr list --repo "$GH_REPO" --state open --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --json number --jq '.[0].number // empty')"
