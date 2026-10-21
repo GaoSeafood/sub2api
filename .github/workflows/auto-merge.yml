@@ -4,13 +4,19 @@ on:
   pull_request_target:
     branches: [main, master]
     types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to validate and merge
+        required: true
+        type: number
 
 permissions: {}
 
 jobs:
   auto-merge:
     name: trusted-auto-merge
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -25,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +52,7 @@ jobs:
             *) echo "Branch is outside the auto-merge allowlist."; exit 0 ;;
           esac
           case "$author" in
-            gaoseafood|github-actions[bot]|dependabot[bot]) ;;
+            gaoseafood|github-actions[bot]|app/github-actions|dependabot[bot]) ;;
             *) echo "PR author is outside the auto-merge allowlist."; exit 0 ;;
           esac
 
@@ -74,7 +80,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
           BASE_REF: ${{ steps.gate.outputs.base_ref }}
         shell: bash
@@ -127,7 +133,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --merge --delete-branch
 
       - name: Trigger CI and deployment after automatic merge

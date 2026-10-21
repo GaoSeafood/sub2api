@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     env:
@@ -80,4 +81,11 @@ jobs:
             gh pr edit "$pr_number" --repo "$GH_REPO" --title "chore: sync upstream" --body-file "$RUNNER_TEMP/pr-body.md"
           else
             gh pr create --repo "$GH_REPO" --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --title "chore: sync upstream" --body-file "$RUNNER_TEMP/pr-body.md"
+            pr_number="$(gh pr list --repo "$GH_REPO" --state open --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --json number --jq '.[0].number // empty')"
           fi
+          [[ -n "$pr_number" ]] || { echo "Could not identify the upstream sync PR."; exit 1; }
+
+          # GITHUB_TOKEN does not reliably emit follow-up PR events; dispatch the checks and gate explicitly.
+          gh workflow run backend-ci.yml --repo "$GH_REPO" --ref automation/upstream-sync
+          gh workflow run security-scan.yml --repo "$GH_REPO" --ref automation/upstream-sync
+          gh workflow run auto-merge.yml --repo "$GH_REPO" --ref "$FORK_BRANCH" -f pr_number="$pr_number"
