@@ -76,12 +76,12 @@ jobs:
           This PR syncs $UPSTREAM_REPOSITORY into this fork.
           Fork-specific GitHub automation and deployment files are preserved; conflicts outside that configuration stop the workflow for manual resolution. Upstream application changes are reviewed here. Automatic merge waits for every check and pauses for deployment, environment, or schema migration changes.
           EOF
-          pr_number="$(gh pr list --repo "$GH_REPO" --state open --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --json number --jq '.[0].number // empty')"
+          pr_number="$(gh api --method GET "repos/$GH_REPO/pulls" -f state=open -f base="$FORK_BRANCH" -f head="$GH_OWNER:automation/upstream-sync" --jq '.[0].number // empty')"
           if [[ -n "$pr_number" ]]; then
             gh pr edit "$pr_number" --repo "$GH_REPO" --title "chore: sync upstream" --body-file "$RUNNER_TEMP/pr-body.md"
           else
             gh pr create --repo "$GH_REPO" --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --title "chore: sync upstream" --body-file "$RUNNER_TEMP/pr-body.md"
-            pr_number="$(gh pr list --repo "$GH_REPO" --state open --base "$FORK_BRANCH" --head "$GH_OWNER:automation/upstream-sync" --json number --jq '.[0].number // empty')"
+            pr_number="$(gh api --method GET "repos/$GH_REPO/pulls" -f state=open -f base="$FORK_BRANCH" -f head="$GH_OWNER:automation/upstream-sync" --jq '.[0].number // empty')"
           fi
           [[ -n "$pr_number" ]] || { echo "Could not identify the upstream sync PR."; exit 1; }
 
