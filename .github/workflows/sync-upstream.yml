@@ -44,24 +44,50 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch --force-create automation/upstream-sync "origin/$FORK_BRANCH"
+          git switch --detach "origin/$FORK_BRANCH"
+          git switch --create automation/upstream-sync
+
+          if git show-ref --verify --quiet refs/remotes/origin/automation/upstream-sync; then
+            merge_log="$RUNNER_TEMP/previous-sync-merge.log"
+            if ! git merge --no-edit --no-ff origin/automation/upstream-sync >"$merge_log" 2>&1; then
+              conflicts="$(git diff --name-only --diff-filter=U || true)"
+              cat "$merge_log"
+              if [[ -n "$conflicts" ]]; then
+                printf 'Previous sync branch conflicts with the fork main branch. Resolve these files and rerun:\n%s\n' "$conflicts" >> "$GITHUB_STEP_SUMMARY"
+              fi
+              git merge --abort || true
+              exit 1
+            fi
+          fi
+
           merge_log="$RUNNER_TEMP/upstream-merge.log"
-          if ! git merge --no-edit --no-ff --strategy-option=ours "upstream/$UPSTREAM_BRANCH" >"$merge_log" 2>&1; then
-            cat "$merge_log"
-            exit 1
+          if ! git merge --no-edit --no-ff "upstream/$UPSTREAM_BRANCH" >"$merge_log" 2>&1; then
+            conflicts="$(git diff --name-only --diff-filter=U || true)"
+            non_config_conflicts="$(grep -Ev '^[.]github/' <<<"$conflicts" || true)"
+            if [[ -z "$conflicts" || -n "$non_config_conflicts" ]]; then
+              cat "$merge_log"
+              if [[ -n "$conflicts" ]]; then
+                printf 'Upstream merge conflicts require manual resolution:\n%s\n' "$conflicts" >> "$GITHUB_STEP_SUMMARY"
+              fi
+              git merge --abort || true
+              exit 1
+            fi
+            # Keep this fork's GitHub configuration when upstream changed the same paths.
+            git restore --source="origin/$FORK_BRANCH" --staged --worktree -- .github
+            git commit --no-edit
           fi
-          cat "$merge_log"
-          conflict_lines="$(grep '^CONFLICT' "$merge_log" || true)"
-          if [[ -n "$conflict_lines" ]] && grep -vqF '.github/' <<<"$conflict_lines"; then
-            echo "Upstream conflicts outside fork-specific GitHub configuration require manual resolution."
-            git reset --hard "origin/$FORK_BRANCH"
-            exit 1
-          fi
-          # Preserve this fork's CI, deployment, and automation settings; only sync application source.
+
+          # Upstream Actions files are fork-specific configuration and stay out of the sync PR.
           git restore --source="origin/$FORK_BRANCH" --staged --worktree -- .github
-          git commit --amend --no-edit
-          git diff --quiet "origin/$FORK_BRANCH" HEAD && { echo "count=0" >> "$GITHUB_OUTPUT"; exit 0; }
-          git push --force origin automation/upstream-sync
+          if ! git diff --cached --quiet; then
+            git commit --amend --no-edit
+          fi
+
+          if git diff --quiet "origin/$FORK_BRANCH" HEAD; then
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git push origin HEAD:refs/heads/automation/upstream-sync
 
       - name: Open or refresh the review PR
         if: steps.sync.outputs.count != '0'
