@@ -52,7 +52,7 @@ jobs:
             *) echo "Branch is outside the auto-merge allowlist."; exit 0 ;;
           esac
           case "$author" in
-            gaoseafood|github-actions[bot]|app/github-actions|dependabot[bot]) ;;
+            gaoseafood|github-actions\[bot\]|app/github-actions|dependabot\[bot\]) ;;
             *) echo "PR author is outside the auto-merge allowlist."; exit 0 ;;
           esac
 
