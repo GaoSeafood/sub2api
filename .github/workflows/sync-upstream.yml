@@ -80,7 +80,7 @@ jobs:
           # Upstream Actions files are fork-specific configuration and stay out of the sync PR.
           git restore --source="origin/$FORK_BRANCH" --staged --worktree -- .github
           if ! git diff --cached --quiet; then
-            git commit -m "chore: preserve fork GitHub configuration"
+            git commit --amend --no-edit
           fi
 
           if git diff --quiet "origin/$FORK_BRANCH" HEAD; then
