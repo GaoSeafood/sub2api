@@ -744,6 +744,14 @@ func modelMappingSignature(rawMapping map[string]any) uint64 {
 // antigravityDefaultPassthroughModels 是 Antigravity 显式 model_mapping 运行时补齐的默认透传条目：
 // 让新模型发布前保存的映射也能调用这些模型。
 var antigravityDefaultPassthroughModels = []string{
+	"claude-opus-5-5",
+	"claude-opus-5-5-high",
+	"claude-opus-5-5-medium",
+	"claude-opus-5-5-low",
+	"claude-sonnet-5-5",
+	"claude-sonnet-5-5-high",
+	"claude-sonnet-5-5-medium",
+	"claude-sonnet-5-5-low",
 	"gemini-3-flash",
 	"gemini-3.1-pro-high",
 	"gemini-3.1-pro-low",
@@ -762,6 +770,10 @@ var antigravityDefaultPassthroughModels = []string{
 	"gemini-3.8-flash-low",
 	"gemini-3.8-flash-medium",
 	"gemini-3.8-flash-tiered",
+	"gemini-4-argon",
+	"gemini-4-argon-high",
+	"gemini-4-argon-medium",
+	"gemini-4-argon-low",
 }
 
 // isAntigravityInjectedDefaultPassthrough 判断 GetModelMapping 中的 key→target 是否仅由
