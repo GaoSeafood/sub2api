@@ -121,12 +121,13 @@ jobs:
         env:
           BEFORE_SHA: ${{ github.event.before }}
           TARGET_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           before_sha="$BEFORE_SHA"
           if [[ -z "$before_sha" || "$before_sha" =~ ^0+$ ]]; then before_sha="$(git rev-parse "$TARGET_SHA^" 2>/dev/null || true)"; fi
           if [[ -z "$before_sha" ]]; then changed_files="$(git diff-tree --no-commit-id --name-only -r "$TARGET_SHA")"; else changed_files="$(git diff --name-only "$before_sha" "$TARGET_SHA")"; fi
-          if grep -Eiv '^(\.github/|docs/|README([^/]*)?$|AGENTS\.md$|CONTRIBUTING\.md$|.*\.md$)' <<<"$changed_files" | grep -q .; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] || grep -Eiv '^(\.github/|docs/|README([^/]*)?$|AGENTS\.md$|CONTRIBUTING\.md$|.*\.md$)' <<<"$changed_files" | grep -q .; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
           echo "before_sha=$before_sha" >> "$GITHUB_OUTPUT"
       - name: Connect to the private server network
         if: steps.scope.outputs.changed == 'true'
