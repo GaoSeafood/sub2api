@@ -103,8 +103,14 @@ jobs:
     needs: [shell, test, frontend, golangci-lint, release-helpers]
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    environment:
+      name: sub2api-production
     permissions:
       contents: read
+      id-token: write
+    concurrency:
+      group: sub2api-production
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -122,35 +128,33 @@ jobs:
           if [[ -z "$before_sha" ]]; then changed_files="$(git diff-tree --no-commit-id --name-only -r "$TARGET_SHA")"; else changed_files="$(git diff --name-only "$before_sha" "$TARGET_SHA")"; fi
           if grep -Eiv '^(\.github/|docs/|README([^/]*)?$|AGENTS\.md$|CONTRIBUTING\.md$|.*\.md$)' <<<"$changed_files" | grep -q .; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
           echo "before_sha=$before_sha" >> "$GITHUB_OUTPUT"
-      - name: Queue signed deployment and wait for the server
+      - name: Connect to the private server network
+        if: steps.scope.outputs.changed == 'true'
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:tingjian-ci
+          ping: 100.78.228.11
+      - name: Deploy the verified commit over restricted SSH
         if: steps.scope.outputs.changed == 'true'
         env:
-          DEPLOY_SECRET: ${{ secrets.DEPLOY_HOOK_SECRET }}
-          REPOSITORY: ${{ github.repository }}
-          REF: ${{ github.ref }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           BEFORE_SHA: ${{ steps.scope.outputs.before_sha }}
           TARGET_SHA: ${{ github.sha }}
-          DELIVERY_ID: ${{ github.run_id }}
         run: |
-          node --input-type=module <<'NODE'
-          import { createHmac } from 'node:crypto'
-          const secret = process.env.DEPLOY_SECRET
-          if (!secret || secret.length < 32) throw new Error('deployment secret is not configured')
-          const payload = { repository: { full_name: process.env.REPOSITORY }, ref: process.env.REF, before: process.env.BEFORE_SHA, after: process.env.TARGET_SHA }
-          const body = JSON.stringify(payload)
-          const signature = 'sha256=' + createHmac('sha256', secret).update(body).digest('hex')
-          const accepted = await fetch('https://ad.gaoseafood.com/api/deploy-hook/sub2api', { method: 'POST', headers: { 'content-type': 'application/json', 'x-github-event': 'push', 'x-github-delivery': process.env.DELIVERY_ID, 'x-hub-signature-256': signature }, body })
-          const receipt = await accepted.json()
-          if (!accepted.ok || receipt.queued !== true) throw new Error('server did not queue the deployment')
-          const statusUrl = new URL('https://ad.gaoseafood.com/api/deploy-hook/sub2api/status')
-          statusUrl.searchParams.set('sha', process.env.TARGET_SHA)
-          for (let attempt = 0; attempt < 360; attempt++) {
-            const response = await fetch(statusUrl, { headers: { 'x-deploy-token': secret } })
-            const state = await response.json()
-            if (!response.ok) throw new Error('server deployment status could not be read')
-            if (state.status === 'succeeded') { console.log('Production deployment succeeded for ' + state.sha); process.exit(0) }
-            if (state.status === 'failed') throw new Error('Production deployment failed: ' + (state.message || 'see server deployment logs'))
-            await new Promise(resolve => setTimeout(resolve, 10000))
-          }
-          throw new Error('Timed out waiting for the server deployment')
-          NODE
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          private_key_file="$(mktemp "$HOME/.ssh/deploy-key.XXXXXX")"
+          known_hosts_file="$(mktemp "$HOME/.ssh/known-hosts.XXXXXX")"
+          trap 'rm -f "$private_key_file" "$known_hosts_file"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$private_key_file"
+          chmod 600 "$private_key_file"
+          unset DEPLOY_SSH_KEY
+          printf '%s\n' '217.142.236.67 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN3QjQrhuDcmqAnqsFLgevYPee3JoRkh+R8qR20AI7jP' > "$known_hosts_file"
+          if [[ "$BEFORE_SHA" =~ ^[a-fA-F0-9]{40}$ ]]; then
+            deploy_command="deploy $TARGET_SHA $BEFORE_SHA"
+          else
+            deploy_command="deploy $TARGET_SHA"
+          fi
+          ssh -i "$private_key_file" -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file" -o HostKeyAlias=217.142.236.67 tingjian-deploy@100.78.228.11 "$deploy_command"
