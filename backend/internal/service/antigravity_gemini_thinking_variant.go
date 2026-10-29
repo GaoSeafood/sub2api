@@ -108,6 +108,30 @@ func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig)
 	}
 }
 
+// geminiThinkingLevelFromClaudeBody resolves the tier from the complete Anthropic
+// request used by the Chat Completions and Responses compatibility paths. Those
+// paths express reasoning_effort as output_config.effort, which is not part of
+// antigravity.ClaudeRequest.Thinking.
+func geminiThinkingLevelFromClaudeBody(body []byte) string {
+	intent := parseClaudeThinkingIntent(body)
+	switch intent.tier {
+	case "minimal":
+		return "low"
+	case "low", "medium", "high":
+		return intent.tier
+	}
+	switch {
+	case intent.budgetTokens <= 0:
+		return "high"
+	case intent.budgetTokens <= geminiThinkingBudgetLowMax:
+		return "low"
+	case intent.budgetTokens <= geminiThinkingBudgetMediumMax:
+		return "medium"
+	default:
+		return "high"
+	}
+}
+
 // resolveGeminiThinkingVariant 为裸 Gemini 模型名挑选账号映射表里存在的思考深度变体。
 // 返回 (映射后的上游模型名, 是否命中)。未命中时调用方应回退到常规 getMappedModel 流程。
 func resolveGeminiThinkingVariant(account *Account, requestedModel string, body []byte) (string, bool) {
@@ -130,14 +154,15 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		return "", false
 	}
 	// 裸名本身若已映射到其他具体模型（如 gemini-3.8-flash → gemini-3.8-flash-tiered、
-	// gemini-3.1-pro → gemini-pro-agent），尊重显式别名配置。
+	// gemini-3.1-pro → gemini-pro-agent），尊重显式别名配置。映射到同族 -high 的裸名
+	// 视为默认档位，允许请求中的思考档位覆盖。
 	// 若裸名映射目标是自己（如前端从 DefaultAntigravityModelMapping 拉取并持久化的
 	// gemini-3.8-flash → gemini-3.8-flash，或 ensureAntigravityDefaultPassthroughs 注入的条目），
 	// 当映射表中存在该模型的精确思考变体（-high/-medium/-low/-tiered）时继续解析变体，
 	// 避免把上游不存在的裸名直接发出导致 404；而对已在映射表中的真实裸模型（如 gemini-2.5-flash），
 	// 仅查找精确变体键以避免被通配符误匹配。
 	mapped, modelMatched := resolveRequestedModelInMapping(mapping, model)
-	if modelMatched && strings.TrimSpace(mapped) != model {
+	if modelMatched && strings.TrimSpace(mapped) != model && !isGeminiThinkingVariantForModel(model, strings.TrimSpace(mapped)) {
 		return "", false
 	}
 
@@ -166,4 +191,10 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		}
 	}
 	return "", false
+}
+
+func isGeminiThinkingVariantForModel(model, mapped string) bool {
+	// A base mapping to -high is the default tier and may be overridden by the
+	// request. Mappings to -medium/-low/-tiered remain explicit aliases.
+	return mapped == model+"-high"
 }

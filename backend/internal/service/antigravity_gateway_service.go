@@ -297,13 +297,14 @@ func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedMo
 	return s.getMappedModelForThinkingLevel(account, requestedModel, "")
 }
 
-// getMappedModelForThinkingLevel 在常规映射之前先把裸 Gemini 模型名
-// （gemini-3.x-flash）解析到上游目录里真实存在的 -low/-medium/-high/-tiered 变体。
-// Antigravity 目录只登记带后缀的变体，裸名直接转发会被上游以
-// 404 "Requested entity was not found." 拒绝，因此所有转发入口都必须经过这一步。
-// thinkingLevel 为空时按 high 兜底；调用方可按自身协议传入推导出的档位。
+// getMappedModelForThinkingLevel 在常规映射之前，按请求中的思考档位解析
+// Gemini 3+/4 和 Claude 5.5 的上游变体。Antigravity 目录按档位登记这些模型，
+// 裸名请求需要先映射到真实变体；thinkingLevel 为空时按 high 兜底。
 func (s *AntigravityGatewayService) getMappedModelForThinkingLevel(account *Account, requestedModel string, thinkingLevel string) string {
 	if mapped, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
+		return mapped
+	}
+	if mapped, ok := resolveClaude55ThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
 		return mapped
 	}
 	return mapAntigravityModel(account, requestedModel)
