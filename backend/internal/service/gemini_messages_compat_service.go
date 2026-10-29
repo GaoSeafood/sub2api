@@ -507,8 +507,8 @@ func (s *GeminiMessagesCompatService) AntigravityGeminiModelIDs(ctx context.Cont
 		if account.Platform != PlatformAntigravity || (requireMixed && !account.IsMixedSchedulingEnabled()) {
 			continue
 		}
-		for model := range account.GetModelMapping() {
-			if isAntigravityGeminiModel(model) {
+		for model, target := range account.GetModelMapping() {
+			if isAntigravityGeminiModel(model) && !account.isAntigravityInjectedDefaultPassthrough(model, target) {
 				seen[model] = struct{}{}
 			}
 		}

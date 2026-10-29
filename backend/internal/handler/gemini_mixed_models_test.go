@@ -228,6 +228,19 @@ func TestGeminiNativeModelsUsesDeclaredMappings(t *testing.T) {
 	require.Zero(t, f.upstream.calls)
 }
 
+func TestGeminiNativeModelsKeepsExplicitAntigravityTiers(t *testing.T) {
+	f := newGeminiDeclaredModelsFixture(t, []service.Account{
+		{ID: 1, Platform: service.PlatformGemini, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "a", "model_mapping": map[string]any{"gemini-4-argon": "gemini-4-argon"}}},
+		{ID: 2, Platform: service.PlatformAntigravity, Extra: map[string]any{"mixed_scheduling": true}, Credentials: map[string]any{"model_mapping": map[string]any{"gemini-4-argon-high": "gemini-4-argon-high"}}},
+	})
+
+	names := f.list(service.GroupModelAllowlist{})
+	require.Contains(t, names, "models/gemini-4-argon-high")
+	require.NotContains(t, names, "models/gemini-4-argon-low")
+	require.Equal(t, http.StatusOK, f.get("gemini-4-argon-high").Code)
+	require.Zero(t, f.upstream.calls)
+}
+
 // 分组内有 Gemini 账号未配置映射（接受任意模型）时，模型接口仍由选中账号的上游应答。
 func TestGeminiNativeModelsUnmappedAccountKeepsUpstream(t *testing.T) {
 	f := newGeminiDeclaredModelsFixture(t, []service.Account{
